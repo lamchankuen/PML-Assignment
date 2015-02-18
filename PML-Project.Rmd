@@ -1,0 +1,141 @@
+---
+title: "Practical Machine Learning Prediction Assignment Writeup "
+output: html_document
+---
+
+# 1. Executive Summary: 
+The goal of this project is to develop a model based on data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. The participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways. Later in the project, the model will be used to predict the manner in which they did the exercise. 
+
+In summary, there are 2 data sets, training and testing. Training data set were cleaned by removing derived columns and reduced to 48 raw data elements. Training data was splitted into training and validation data sets. Multiple regression method were applied on the training data set. RPart method was rejected because of the incomplete predicion results. Ramdom Forest was selected as the mode because of the high accuracy (99.49% in cross-validation). 
+
+Later the model was used to predict 20 testing data set. Results were submitted to submission website and all are correct. 
+
+# 2. Data loading 
+Before any processing, we loaded libraries to be used in prediction & plotting: 
+
+```{r, echo=FALSE}
+library(caret)
+library(AppliedPredictiveModeling)
+library(rattle)
+```
+
+The training data for this project are available as CSV and saved locally. 
+
+Training data & testing data in CSV are load as data frames by read.csv(). 
+
+```{r, echo=FALSE}
+training <- read.csv("pml-training.csv")
+
+testing <- read.csv("pml-testing.csv")
+```
+
+# 3. Explore & Data Cleansing 
+Based on the original research paper, the data set was collected for prediction of weight lifting exercises conducted by 6 male participants using a dumbbell. Four sensors were fixed on 4 positions of the participants: forearm, arm, lumbar belt and dumbbell. For each sensor, 4 groups of data were collected as follows: 
+
+- Group 1. Position: roll, pitch, yaw
+- Group 2. Acceleration - 3 axis (x, y, z)
+- Group 3. Gyroscope - 3 axis (x, y, z)
+- Group 4. Magnetometer - 3 axis (x, y, z)
+
+So each sendor generates 12 data elements, in total orf 48 data elements for 4 sensors. 
+
+## 3.1 Explore Data
+Summary of data set was reviewed. The number of columns and rows are displayed below. 
+
+```{r, echo=FALSE}
+print("Number of columns in training data set:") 
+ncol(training)
+
+print("Number of rows in training data set:") 
+nrow(training)
+```
+
+Furthermore, we found there are many empty or N/A values in the data set. These columns are derived columns from the raw data columns above. High percentage of unique values in predictors can be a near zero-variance predictor and can cause problems for some models. Also derived columns are corelated to raw data columns. 
+
+## 3.2 Data Cleansing 
+Next we'll only keep the participant, action class, 48 raw data elements measured by the sensors and remove calculated columns such as maximun, minimum, amplitude, average, variance, standard devication, etc., in the dataset. As a result, only 50 variables are included in the data set as input to model training. 
+
+```{r, echo=FALSE}
+trainSub <- training[,c(2,
+                        8,9,10,
+                        37,38,39,40,41,42,43,44,45,
+                        46,47,48,
+                        60,61,62,63,64,65,66,67,68,
+                        84,85,86,
+                        113,114,115,116,117,118,119,120,121,
+                        122,123,124,
+                        151,152,153,154,155,156,157,158,159,
+                        160
+                        )]
+```
+
+## 3.3 Data Partitioning 
+For corss validation in a later stage, we split training data into training data into 2 sets, one for training (75% of training data set) and another for cross validion purpose (25% of training data set).
+
+The 3 data set are: trainData, validData, and testing respectively.
+
+```{r, echo=FALSE}
+set.seed(8484)
+inTrain = createDataPartition(trainSub$classe, p = 3/4)[[1]]
+trainData = trainSub[ inTrain,]
+ValidData = trainSub[-inTrain,]
+
+print("Number of rows in training data set:") 
+nrow(trainData)
+
+print("Number of rows in validation data set:") 
+nrow(ValidData)
+
+print("Number of rows in testing data set:") 
+nrow(testing)
+```
+
+# 4. Model training
+
+## 4.1 First trial - RPart
+In the first trial, we selected RPart as the method in caret train function. The best fit mode is called modelFit1. 
+
+```{r, echo=FALSE}
+library(rpart)
+modelFit1 <- train(classe ~ ., data=trainData, method="rpart") 
+``` 
+
+To explore the accuracy of prediction model generate by RPart, we plotted the tree as follows. Unfortunately, the tree can only predict outcomes: A, B, C and E while D is missing. Obviously this is incorrect as we kown there are outcome D in the data set. RPart mode has to be dropped and no further investigation is needed. 
+
+```{r, echo=FALSE}
+print(modelFit1$finalModel)
+
+fancyRpartPlot(modelFit1$finalModel)
+```
+
+## 4.2 Second trial - Random Forest 
+Next, we'll explore if we can use Random Forest as the prediction method. Since calling RF from caret is inefficient so we had directly use RamdomForest libray package. 
+
+```{r, echo=FALSE}
+library(randomForest)
+modelFit2 <- randomForest(classe ~ ., data=trainData, importance=TRUE) 
+```
+
+The summary of this model is printed below. 
+
+```{r, echo=FALSE}
+print(modelFit2)
+```
+
+The Out-of-Bag Error is only 0.42% which is satisfactory. 
+
+# 4.3 Cross Validation 
+We'll further explore the model by applying the mode to validation data. 
+
+```{r, echo=FALSE}
+ValidPred <- predict(modelFit2,ValidData)
+
+CM <- confusionMatrix(ValidData$classe, ValidPred)
+
+```
+
+Accuracy of the model for predicting validation data is `r CM$overall[1]*100`% . 
+
+Out of sample can be estimated by applying the model to a new set of data, other than the data set for model training. So, we used the validation data set partitoned earlier. (Refer to section #3.3). Out of sample error is also called generalised error. Out of sample error based on validation data is `r (sum(CM$table)-sum(diag(CM$table)))/sum(CM$table)*100`%. 
+
+
